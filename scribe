@@ -1,0 +1,677 @@
+#!/bin/bash
+
+# Scribe - Unified command router for multi-agent code orchestration
+# Usage: scribe [COMMAND] [OPTIONS]
+
+set -euo pipefail
+
+# Script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Color definitions
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+RED='\033[0;31m'
+YELLOW='\033[0;33m'
+BOLD='\033[1m'
+RESET='\033[0m'
+
+# Source common utilities if available (will override colors if defined)
+if [[ -f "${SCRIPT_DIR}/lib/common.sh" ]]; then
+    source "${SCRIPT_DIR}/lib/common.sh"
+fi
+
+# Version
+VERSION="1.0.0"
+
+# Main usage
+usage() {
+    cat <<EOF
+${BOLD}Scribe - Multi-Agent Code Orchestration System${RESET}
+Version ${VERSION}
+
+${BOLD}USAGE:${RESET}
+    scribe [COMMAND] [OPTIONS]
+
+${BOLD}COMMANDS:${RESET}
+    run          Execute orchestration with a feature description (default)
+    issue        Work on GitHub issues interactively
+    work         Interactive workflow menu
+    analyze      Analyze a repository structure
+    monitor      Monitor active or completed sessions
+    publish      Create pull requests from completed sessions
+    review       Address PR feedback and iterate on implementations
+    checkout     Checkout branches from Scribe sessions
+    list         List recent sessions
+    clean        Clean up old sessions
+    install      Install Scribe to your PATH
+    help         Show help for a specific command
+    version      Show version information
+
+${BOLD}EXAMPLES:${RESET}
+    ${GREEN}# Run orchestration directly${RESET}
+    scribe "Add dark mode toggle" "https://github.com/org/repo"
+    scribe run "Add dark mode toggle" "https://github.com/org/repo"
+    
+    ${GREEN}# Work on GitHub issues${RESET}
+    scribe issue                    # Interactive issue selection
+    scribe issue -n 123            # Work on specific issue
+    scribe issue list              # List open issues
+    
+    ${GREEN}# Interactive workflows${RESET}
+    scribe work                    # Open interactive menu
+    
+    ${GREEN}# Repository analysis${RESET}
+    scribe analyze .               # Analyze current directory
+    scribe analyze /path/to/repo   # Analyze specific repo
+    
+    ${GREEN}# Session management${RESET}
+    scribe monitor                 # Monitor latest session
+    scribe monitor --tail          # Monitor with log tailing
+    scribe publish                 # Publish latest completed session
+    scribe publish --draft         # Create draft pull requests
+    scribe review                  # Review latest PRs for feedback
+    scribe review PR_URL           # Address specific PR feedback
+    scribe checkout                # Checkout branch from latest session
+    scribe checkout -w             # Create worktree for branch
+    scribe list                    # List recent sessions
+    scribe clean                   # Clean up old sessions
+    scribe clean --days 30         # Clean sessions older than 30 days
+
+${BOLD}GLOBAL OPTIONS:${RESET}
+    -h, --help       Show this help message
+    -v, --version    Show version information
+    --debug          Enable debug mode
+
+For more help on a specific command, run:
+    scribe help [COMMAND]
+    scribe [COMMAND] --help
+EOF
+}
+
+# Command-specific help
+show_command_help() {
+    local command="$1"
+
+    case "${command}" in
+    run)
+        cat <<EOF
+${BOLD}scribe run - Execute orchestration${RESET}
+
+${BOLD}USAGE:${RESET}
+    scribe run [OPTIONS] "Feature description" "repository-url"
+    scribe [OPTIONS] "Feature description" "repository-url"  # 'run' is default
+
+${BOLD}OPTIONS:${RESET}
+    -w, --workers NUM       Maximum parallel workers (default: 3)
+    -t, --timeout SECONDS   Worker timeout in seconds (default: 3600)
+    -b, --branch NAME       Base branch name (default: main)
+    -s, --strategy TYPE     Merge strategy: single-pr or federated (default: single-pr)
+    -h, --help             Show this help message
+
+${BOLD}EXAMPLES:${RESET}
+    scribe run "Add user authentication" "https://github.com/org/repo"
+    scribe run -w 5 "Implement shopping cart" "https://github.com/org/shop"
+    scribe run -s federated "Refactor database layer" "."
+EOF
+        ;;
+
+    issue)
+        cat <<EOF
+${BOLD}scribe issue - Work on GitHub issues${RESET}
+
+${BOLD}USAGE:${RESET}
+    scribe issue [SUBCOMMAND] [OPTIONS]
+
+${BOLD}SUBCOMMANDS:${RESET}
+    select       Select and work on an issue (default)
+    list         List open issues
+    work         Work on a specific issue
+
+${BOLD}OPTIONS:${RESET}
+    -n, --number NUM      Issue number to work on
+    -r, --repo URL        Repository URL (default: current repo)
+    -l, --limit NUM       Maximum issues to display (default: 20)
+    -h, --help           Show this help message
+
+${BOLD}EXAMPLES:${RESET}
+    scribe issue                    # Interactive selection
+    scribe issue -n 123            # Work on issue #123
+    scribe issue list              # Just list issues
+    scribe issue work 123          # Alternative syntax
+EOF
+        ;;
+
+    work)
+        cat <<EOF
+${BOLD}scribe work - Interactive workflow menu${RESET}
+
+${BOLD}USAGE:${RESET}
+    scribe work [OPTIONS]
+
+${BOLD}DESCRIPTION:${RESET}
+    Opens an interactive menu for:
+    - Working on GitHub issues
+    - Implementing custom features
+    - Managing sessions
+    - Cleaning up old data
+
+${BOLD}OPTIONS:${RESET}
+    -h, --help    Show this help message
+
+${BOLD}EXAMPLES:${RESET}
+    scribe work    # Open interactive menu
+EOF
+        ;;
+
+    analyze)
+        cat <<EOF
+${BOLD}scribe analyze - Analyze repository structure${RESET}
+
+${BOLD}USAGE:${RESET}
+    scribe analyze [PATH]
+
+${BOLD}DESCRIPTION:${RESET}
+    Analyzes a repository's structure and outputs JSON metadata
+    about the project type, frameworks, directories, and more.
+
+${BOLD}ARGUMENTS:${RESET}
+    PATH    Repository path (default: current directory)
+
+${BOLD}OPTIONS:${RESET}
+    -o, --output FILE    Save analysis to file
+    -h, --help          Show this help message
+
+${BOLD}EXAMPLES:${RESET}
+    scribe analyze                     # Analyze current directory
+    scribe analyze /path/to/repo       # Analyze specific repo
+    scribe analyze -o analysis.json    # Save to file
+EOF
+        ;;
+
+    list)
+        cat <<EOF
+${BOLD}scribe list - List recent sessions${RESET}
+
+${BOLD}USAGE:${RESET}
+    scribe list [OPTIONS]
+
+${BOLD}OPTIONS:${RESET}
+    -n, --number NUM    Number of sessions to show (default: 10)
+    -a, --all          Show all sessions
+    -h, --help         Show this help message
+
+${BOLD}EXAMPLES:${RESET}
+    scribe list         # Show recent 10 sessions
+    scribe list -n 20   # Show recent 20 sessions
+    scribe list --all   # Show all sessions
+EOF
+        ;;
+
+    monitor)
+        cat <<EOF
+${BOLD}scribe monitor - Monitor sessions${RESET}
+
+${BOLD}USAGE:${RESET}
+    scribe monitor [OPTIONS] [SESSION_ID]
+
+${BOLD}OPTIONS:${RESET}
+    -t, --tail              Tail worker logs in real-time
+    -s, --status            Show status only (no log tailing)
+    -r, --refresh SECONDS   Refresh interval (default: 2)
+    -h, --help             Show this help message
+
+${BOLD}DESCRIPTION:${RESET}
+    Monitor Scribe orchestration sessions in real-time.
+    Shows worker status, progress, and optionally tails logs.
+
+${BOLD}EXAMPLES:${RESET}
+    scribe monitor                 # Monitor latest session
+    scribe monitor --tail          # Monitor with log tailing
+    scribe monitor SESSION_ID      # Monitor specific session
+    scribe monitor --status        # Show status once and exit
+EOF
+        ;;
+
+    publish)
+        cat <<EOF
+${BOLD}scribe publish - Create pull requests${RESET}
+
+${BOLD}USAGE:${RESET}
+    scribe publish [OPTIONS] [SESSION_ID]
+
+${BOLD}OPTIONS:${RESET}
+    --force                Force push even if branches/PRs exist
+    --draft                Create draft pull requests
+    -h, --help            Show this help message
+
+${BOLD}DESCRIPTION:${RESET}
+    Publish completed Scribe sessions by creating branches and pull requests.
+    Automatically detects merge strategy and creates appropriate PRs.
+
+${BOLD}EXAMPLES:${RESET}
+    scribe publish                 # Publish latest completed session
+    scribe publish SESSION_ID      # Publish specific session
+    scribe publish --draft         # Create draft PRs
+    scribe publish --force         # Force push and recreate PRs
+EOF
+        ;;
+
+    review)
+        cat <<EOF
+${BOLD}scribe review - Address PR feedback${RESET}
+
+${BOLD}USAGE:${RESET}
+    scribe review [OPTIONS] [PR_URL|SESSION_ID]
+
+${BOLD}OPTIONS:${RESET}
+    --auto                 Automatically address simple feedback
+    -h, --help            Show this help message
+
+${BOLD}DESCRIPTION:${RESET}
+    Address review feedback and iterate on pull request implementations.
+    Fetches PR comments, analyzes feedback, and spawns workers to address changes.
+
+${BOLD}EXAMPLES:${RESET}
+    scribe review                  # Review latest session PRs
+    scribe review PR_URL           # Review specific PR
+    scribe review SESSION_ID       # Review all PRs from session
+    scribe review --auto           # Auto-fix simple issues
+EOF
+        ;;
+
+    checkout)
+        cat <<EOF
+${BOLD}scribe checkout - Checkout session branches${RESET}
+
+${BOLD}USAGE:${RESET}
+    scribe checkout [OPTIONS] [SESSION_ID]
+
+${BOLD}OPTIONS:${RESET}
+    -w, --worktree      Create new worktree instead of switching branches
+    -f, --force         Force checkout even with uncommitted changes
+    -l, --list          List all available branches without checking out
+    -h, --help          Show this help message
+
+${BOLD}DESCRIPTION:${RESET}
+    Checkout branches created by Scribe sessions.
+    - Single-PR: Directly checks out the integration branch
+    - Federated: Shows interactive menu to select from task branches
+
+${BOLD}EXAMPLES:${RESET}
+    scribe checkout                # Checkout branch from latest session
+    scribe checkout SESSION_ID     # Checkout branch from specific session
+    scribe checkout -w             # Create worktree for branch
+    scribe checkout -l             # List branches without checkout
+EOF
+        ;;
+
+    clean)
+        cat <<EOF
+${BOLD}scribe clean - Clean up old sessions${RESET}
+
+${BOLD}USAGE:${RESET}
+    scribe clean [OPTIONS]
+
+${BOLD}OPTIONS:${RESET}
+    -d, --days NUM     Remove sessions older than NUM days (default: 7)
+    -y, --yes          Skip confirmation prompt
+    -h, --help         Show this help message
+
+${BOLD}EXAMPLES:${RESET}
+    scribe clean            # Clean sessions older than 7 days
+    scribe clean --days 30  # Clean sessions older than 30 days
+    scribe clean -y         # Skip confirmation
+EOF
+        ;;
+
+    *)
+        echo -e "${RED}Unknown command: ${command}${RESET}"
+        echo "Run 'scribe help' for available commands"
+        ;;
+    esac
+}
+
+# Route to run command (default)
+route_to_run() {
+    exec "${SCRIPT_DIR}/scribe.sh" "$@"
+}
+
+# Route to issue command
+route_to_issue() {
+    # Handle subcommands
+    case "${1:-select}" in
+    list)
+        shift
+        # Just list issues without selection
+        exec "${SCRIPT_DIR}/scribe-issue.sh" --list-only "$@"
+        ;;
+    work)
+        shift
+        # Work on specific issue (alternative syntax)
+        if [[ $# -gt 0 ]]; then
+            exec "${SCRIPT_DIR}/scribe-issue.sh" -n "$@"
+        else
+            echo -e "${RED}Error: 'scribe issue work' requires an issue number${RESET}"
+            exit 1
+        fi
+        ;;
+    select | *)
+        # Default to interactive selection
+        if [[ "${1:-}" == "select" ]]; then
+            shift
+        fi
+        exec "${SCRIPT_DIR}/scribe-issue.sh" "$@"
+        ;;
+    esac
+}
+
+# Route to work command
+route_to_work() {
+    exec "${SCRIPT_DIR}/scribe-work.sh" "$@"
+}
+
+# Route to monitor command
+route_to_monitor() {
+    exec "${SCRIPT_DIR}/scribe-monitor.sh" "$@"
+}
+
+# Route to publish command
+route_to_publish() {
+    exec "${SCRIPT_DIR}/scribe-publish.sh" "$@"
+}
+
+# Route to review command
+route_to_review() {
+    exec "${SCRIPT_DIR}/scribe-review.sh" "$@"
+}
+
+# Route to checkout command
+route_to_checkout() {
+    exec "${SCRIPT_DIR}/scribe-checkout.sh" "$@"
+}
+
+# Route to analyze command
+route_to_analyze() {
+    local path="${1:-.}"
+    shift || true
+
+    # Handle options
+    local output_file=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+        -o | --output)
+            output_file="$2"
+            shift 2
+            ;;
+        -h | --help)
+            show_command_help "analyze"
+            exit 0
+            ;;
+        *)
+            path="$1"
+            shift
+            ;;
+        esac
+    done
+
+    # Run analysis
+    if [[ -n "${output_file}" ]]; then
+        "${SCRIPT_DIR}/lib/analyze-repo.sh" "${path}" >"${output_file}"
+        echo -e "${GREEN}Analysis saved to: ${output_file}${RESET}"
+    else
+        "${SCRIPT_DIR}/lib/analyze-repo.sh" "${path}"
+    fi
+}
+
+# List sessions
+list_sessions() {
+    local sessions_dir="${SCRIPT_DIR}/workspace/sessions"
+    local limit=10
+    local show_all=false
+
+    # Parse options
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+        -n | --number)
+            limit="$2"
+            shift 2
+            ;;
+        -a | --all)
+            show_all=true
+            shift
+            ;;
+        -h | --help)
+            show_command_help "list"
+            exit 0
+            ;;
+        *)
+            shift
+            ;;
+        esac
+    done
+
+    if [[ ! -d "${sessions_dir}" ]] || [[ -z "$(ls -A ${sessions_dir} 2>/dev/null)" ]]; then
+        echo "No sessions found."
+        return
+    fi
+
+    echo -e "${BLUE}${BOLD}Scribe Sessions:${RESET}\n"
+
+    local count=0
+    for session in $(ls -t "${sessions_dir}"); do
+        if [[ ! ${show_all} == true ]] && [[ ${count} -ge ${limit} ]]; then
+            break
+        fi
+
+        local config="${sessions_dir}/${session}/config.json"
+        if [[ -f "${config}" ]]; then
+            local ticket=$(jq -r '.ticket_description' "${config}" 2>/dev/null | head -1)
+            local status=$(jq -r '.status' "${config}" 2>/dev/null)
+            local created=$(jq -r '.created_at' "${config}" 2>/dev/null | cut -d'T' -f1)
+            local repo=$(jq -r '.repo_url' "${config}" 2>/dev/null | sed 's|.*/||')
+
+            printf "${BOLD}%-30s${RESET} ${GREEN}%-12s${RESET} %s\n" \
+                "${session:0:30}" "${status}" "${created}"
+            printf "  ${YELLOW}%-10s${RESET} %s\n" "Repo:" "${repo}"
+            printf "  ${YELLOW}%-10s${RESET} %.60s...\n\n" "Task:" "${ticket}"
+
+            ((count++))
+        fi
+    done
+
+    if [[ ${show_all} == false ]] && [[ $(ls -t "${sessions_dir}" | wc -l) -gt ${limit} ]]; then
+        echo -e "${YELLOW}Showing ${limit} most recent sessions. Use --all to see all.${RESET}"
+    fi
+}
+
+# Clean sessions
+clean_sessions() {
+    local sessions_dir="${SCRIPT_DIR}/workspace/sessions"
+    local days=7
+    local skip_confirm=false
+
+    # Parse options
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+        -d | --days)
+            days="$2"
+            shift 2
+            ;;
+        -y | --yes)
+            skip_confirm=true
+            shift
+            ;;
+        -h | --help)
+            show_command_help "clean"
+            exit 0
+            ;;
+        *)
+            shift
+            ;;
+        esac
+    done
+
+    if [[ ! -d "${sessions_dir}" ]]; then
+        echo "No sessions directory found."
+        return
+    fi
+
+    # Find old sessions
+    local old_sessions=()
+    for session in "${sessions_dir}"/*; do
+        if [[ -d "${session}" ]]; then
+            local config="${session}/config.json"
+            if [[ -f "${config}" ]]; then
+                local created=$(jq -r '.created_at' "${config}" 2>/dev/null)
+                if [[ -n "${created}" ]]; then
+                    local created_timestamp=$(date -d "${created}" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "${created}" +%s 2>/dev/null || echo 0)
+                    local current_timestamp=$(date +%s)
+                    local age_days=$(((current_timestamp - created_timestamp) / 86400))
+
+                    if [[ ${age_days} -gt ${days} ]]; then
+                        old_sessions+=("${session}")
+                    fi
+                fi
+            fi
+        fi
+    done
+
+    if [[ ${#old_sessions[@]} -eq 0 ]]; then
+        echo "No sessions older than ${days} days found."
+        return
+    fi
+
+    echo "Found ${#old_sessions[@]} sessions older than ${days} days."
+
+    if [[ ${skip_confirm} != true ]]; then
+        read -r -p "Remove these sessions? (y/n): " confirm
+        if [[ "${confirm,,}" != "y" ]]; then
+            echo "Cancelled."
+            return
+        fi
+    fi
+
+    # Remove old sessions
+    for session in "${old_sessions[@]}"; do
+        echo "Removing: $(basename "${session}")"
+        rm -rf "${session}"
+    done
+
+    echo -e "\n${GREEN}Cleaned up ${#old_sessions[@]} old sessions.${RESET}"
+}
+
+# Install command
+run_install() {
+    if [[ -f "${SCRIPT_DIR}/install.sh" ]]; then
+        exec "${SCRIPT_DIR}/install.sh" "$@"
+    else
+        echo -e "${RED}Install script not found${RESET}"
+        exit 1
+    fi
+}
+
+# Main router
+main() {
+    # Handle no arguments - show usage
+    if [[ $# -eq 0 ]]; then
+        usage
+        exit 0
+    fi
+
+    # Global options
+    local debug_mode=false
+
+    # Parse global options and command
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        -v | --version)
+            echo "Scribe version ${VERSION}"
+            exit 0
+            ;;
+        --debug)
+            debug_mode=true
+            export SCRIBE_DEBUG=1
+            shift
+            ;;
+        help)
+            shift
+            if [[ $# -gt 0 ]]; then
+                show_command_help "$1"
+            else
+                usage
+            fi
+            exit 0
+            ;;
+        version)
+            echo "Scribe version ${VERSION}"
+            exit 0
+            ;;
+        # Commands
+        run)
+            shift
+            route_to_run "$@"
+            ;;
+        issue)
+            shift
+            route_to_issue "$@"
+            ;;
+        work)
+            shift
+            route_to_work "$@"
+            ;;
+        analyze)
+            shift
+            route_to_analyze "$@"
+            ;;
+        monitor)
+            shift
+            route_to_monitor "$@"
+            ;;
+        publish)
+            shift
+            route_to_publish "$@"
+            ;;
+        review)
+            shift
+            route_to_review "$@"
+            ;;
+        checkout)
+            shift
+            route_to_checkout "$@"
+            ;;
+        list)
+            shift
+            list_sessions "$@"
+            ;;
+        clean)
+            shift
+            clean_sessions "$@"
+            ;;
+        install)
+            shift
+            run_install "$@"
+            ;;
+        *)
+            # If first argument doesn't match a command and doesn't start with -,
+            # assume it's a feature description and route to run
+            if [[ ! "$1" =~ ^- ]]; then
+                route_to_run "$@"
+            else
+                echo -e "${RED}Unknown option: $1${RESET}"
+                echo "Run 'scribe --help' for usage"
+                exit 1
+            fi
+            ;;
+        esac
+        break
+    done
+}
+
+# Run main
+main "$@"
+

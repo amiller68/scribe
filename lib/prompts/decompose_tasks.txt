@@ -1,0 +1,43 @@
+Given this feature ticket: [TICKET_DESCRIPTION]
+And this repository analysis: [REPO_ANALYSIS]
+
+Break this feature down into 3-5 independent tasks that can be implemented in parallel with minimal interdependencies.
+
+Requirements:
+1. Each task should be self-contained and implementable by a single developer
+2. Tasks should have minimal overlap in the files they modify
+3. Tasks should be roughly equal in complexity and scope
+4. Consider the repository structure and separate concerns appropriately
+
+For each task provide:
+- A unique ID (e.g., task-001, task-002)
+- A clear, descriptive name
+- Detailed description of what needs to be implemented
+- Specific directories/files to focus on (scope)
+- Areas that should NOT be modified (boundaries)
+- Any interfaces or contracts other tasks will depend on
+- Priority (1-5, where 1 is highest)
+
+Output the tasks as a JSON structure:
+{
+    "tasks": [
+        {
+            "id": "task-001",
+            "name": "Task Name",
+            "description": "Detailed description",
+            "scope": ["dir1/", "dir2/file.ext"],
+            "boundaries": ["dir3/", "dir4/"],
+            "interfaces": ["Description of any interfaces"],
+            "priority": 1
+        }
+    ]
+}
+
+Consider these parallelization strategies:
+- Frontend vs Backend separation
+- Feature layers (UI, Business Logic, Data Access)
+- Component-based division
+- Test implementation as a separate task
+- Documentation updates as a separate task
+
+Ensure tasks are truly independent and can be developed simultaneously without conflicts.
